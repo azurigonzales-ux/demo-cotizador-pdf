@@ -1,0 +1,1018 @@
+<!DOCTYPE html>
+<html lang="es-MX" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Cotizador Rápido y Generador de Notas PDF — ClimaTech Tabasco</title>
+  <meta name="description" content="Herramienta comercial de Cotizaciones Formales y Notas de Remisión en PDF con envío directo a WhatsApp para negocios en Villahermosa, Tabasco." />
+
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+
+  <!-- Tailwind CSS v3 (CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f9ff',
+              100: '#e0f2fe',
+              500: '#0ea5e9',
+              600: '#0284c7',
+              700: '#0369a1',
+              800: '#075985',
+              900: '#0c4a6e',
+            }
+          }
+        }
+      }
+    };
+  </script>
+
+  <!-- FontAwesome 6 (CDN) -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+
+  <!-- html2pdf.js 0.10.1 (CDN requerido) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+  <!-- Lógica de Negocio y Configuración Centralizada -->
+  <script src="app.js"></script>
+
+  <!-- Alpine.js v3 (CDN) -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.10/dist/cdn.min.js"></script>
+
+  <style>
+    [x-cloak] { display: none !important; }
+
+    /* Reglas modernas de adaptación y accesibilidad */
+    :root { --target-size: 28px; }
+    @media (pointer: coarse) {
+      :root { --target-size: 44px; }
+    }
+    h1, h2, h3 { text-wrap: balance; }
+    p, li { text-wrap: pretty; }
+
+    /* Estilos específicos para la hoja membretada PDF */
+    #documento-imprimible {
+      background-color: #ffffff;
+      color: #0f172a;
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    }
+
+    .sello-garantia {
+      border: 2.5px double #0284c7;
+      background: radial-gradient(circle, rgba(240,249,255,0.95) 0%, rgba(224,242,254,0.6) 100%);
+    }
+
+    @media print {
+      body * { visibility: hidden; }
+      #documento-imprimible, #documento-imprimible * { visibility: visible; }
+      #documento-imprimible {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        box-shadow: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body class="bg-slate-100 text-slate-800 antialiased min-h-screen flex flex-col selection:bg-sky-600 selection:text-white" x-data="cotizadorApp()">
+
+  <!-- NOTIFICACIÓN FLOTANTE (TOAST) -->
+  <div
+    x-cloak
+    x-show="notificacion.visible"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 translate-y-3"
+    x-transition:enter-end="opacity-100 translate-y-0"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-y-0"
+    x-transition:leave-end="opacity-0 translate-y-3"
+    role="status"
+    aria-live="polite"
+    class="fixed top-4 right-4 z-50 max-w-sm bg-slate-900 text-white px-4 py-3 rounded-xl shadow-2xl border border-slate-700 flex items-center gap-3"
+  >
+    <span
+      class="w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm"
+      :class="{
+        'bg-emerald-500/20 text-emerald-400': notificacion.tipo === 'exito',
+        'bg-amber-500/20 text-amber-400': notificacion.tipo === 'alerta',
+        'bg-sky-500/20 text-sky-400': notificacion.tipo === 'info'
+      }"
+    >
+      <i class="fa-solid" :class="{
+        'fa-check': notificacion.tipo === 'exito',
+        'fa-triangle-exclamation': notificacion.tipo === 'alerta',
+        'fa-circle-info': notificacion.tipo === 'info'
+      }" aria-hidden="true"></i>
+    </span>
+    <p class="text-sm font-medium leading-snug" x-text="notificacion.mensaje"></p>
+  </div>
+
+  <!-- BARRA SUPERIOR CORPORATIVA -->
+  <header class="bg-slate-900 text-white border-b border-slate-800 sticky top-0 z-30 shadow-md">
+    <div class="max-w-[1440px] mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <img :src="config.empresa.logoUrl" alt="Logo ClimaTech Tabasco" class="w-10 h-10 rounded-xl shadow-inner border border-sky-500/30 shrink-0" />
+        <div>
+          <div class="flex items-center gap-2 flex-wrap">
+            <h1 class="text-base sm:text-lg font-bold tracking-tight text-white" x-text="config.empresa.nombre"></h1>
+            <span class="hidden md:inline-flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-400/30">
+              <i class="fa-solid fa-location-dot text-[10px]" aria-hidden="true"></i> Villahermosa, Tab.
+            </span>
+          </div>
+          <p class="text-xs text-slate-400 hidden sm:block">Cotizador Rápido, Generador de Notas de Remisión en PDF + Envío a WhatsApp</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button
+          type="button"
+          @click="cargarDemoRapido()"
+          class="text-xs font-medium bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3 py-2 rounded-lg transition flex items-center gap-1.5"
+          title="Cargar otro caso de demostración"
+        >
+          <i class="fa-solid fa-wand-magic-sparkles text-sky-400" aria-hidden="true"></i>
+          <span>Cargar Ejemplo</span>
+        </button>
+
+        <button
+          type="button"
+          @click="limpiarPartidas()"
+          class="text-xs font-medium bg-slate-800 hover:bg-rose-950/60 text-slate-300 hover:text-rose-200 border border-slate-700 hover:border-rose-800/60 px-3 py-2 rounded-lg transition flex items-center gap-1.5"
+          title="Vaciar conceptos actuales"
+        >
+          <i class="fa-solid fa-rotate-left text-rose-400" aria-hidden="true"></i>
+          <span class="hidden sm:inline">Reiniciar</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- PESTAÑAS MÓVILES ("✏️ Armar Cotización / Nota" y "📄 Vista Previa del Documento") -->
+    <div class="lg:hidden bg-slate-950/80 px-3 py-2 border-t border-slate-800">
+      <div class="grid grid-cols-2 gap-2 bg-slate-900 p-1 rounded-xl border border-slate-800" role="tablist" aria-label="Cambiar entre editor y vista previa">
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeMobileTab === 'editor'"
+          @click="activeMobileTab = 'editor'"
+          class="py-2.5 px-3 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5"
+          :class="activeMobileTab === 'editor' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'"
+        >
+          <span>✏️ Armar Cotización / Nota</span>
+        </button>
+        <button
+          type="button"
+          role="tab"
+          :aria-selected="activeMobileTab === 'preview'"
+          @click="activeMobileTab = 'preview'"
+          class="py-2.5 px-3 rounded-lg text-xs sm:text-sm font-semibold transition flex items-center justify-center gap-1.5"
+          :class="activeMobileTab === 'preview' ? 'bg-sky-600 text-white shadow' : 'text-slate-400 hover:text-white'"
+        >
+          <span>📄 Vista Previa del Documento</span>
+          <span class="bg-slate-800 text-sky-300 text-[11px] px-1.5 py-0.5 rounded-full font-mono" x-text="partidas.length"></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- CONTENIDO PRINCIPAL DIVIDIDO EN 2 COLUMNAS EN ESCRITORIO -->
+  <main class="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 py-6 pb-32">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+      <!-- =====================================================================
+           COLUMNA IZQUIERDA (5/12): PANEL DE CAPTURA Y CONFIGURACIÓN
+           ===================================================================== -->
+      <section
+        aria-label="Panel para armar cotización o nota de remisión"
+        class="lg:col-span-5 space-y-5"
+        :class="activeMobileTab === 'editor' ? 'block' : 'hidden lg:block'"
+      >
+
+        <!-- 1. SELECTOR DE TIPO DE DOCUMENTO Y FOLIO -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-extrabold">1</span>
+              Tipo de Documento y Folio
+            </h2>
+            <span class="text-xs font-mono font-semibold text-sky-700 bg-sky-50 border border-sky-200 px-2.5 py-1 rounded-md" x-text="folio"></span>
+          </div>
+
+          <!-- Radio / Toggle de Tipo de Documento -->
+          <fieldset class="mb-4">
+            <legend class="sr-only">Selecciona el tipo de documento a emitir</legend>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <label
+                class="cursor-pointer rounded-xl border p-3.5 flex items-start gap-3 transition select-none"
+                :class="tipoDocumento === 'cotizacion' ? 'bg-sky-50/80 border-sky-600 ring-2 ring-sky-500/20' : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100/70'"
+              >
+                <input
+                  type="radio"
+                  name="tipoDocumento"
+                  value="cotizacion"
+                  x-model="tipoDocumento"
+                  class="mt-1 accent-sky-600"
+                />
+                <div>
+                  <span class="block text-sm font-bold text-slate-900">Cotización Formal</span>
+                  <span class="block text-xs text-slate-500 mt-0.5">Propuesta comercial con vigencia y condiciones.</span>
+                </div>
+              </label>
+
+              <label
+                class="cursor-pointer rounded-xl border p-3.5 flex items-start gap-3 transition select-none"
+                :class="tipoDocumento === 'remision' ? 'bg-emerald-50/80 border-emerald-600 ring-2 ring-emerald-500/20' : 'bg-slate-50/60 border-slate-200 hover:bg-slate-100/70'"
+              >
+                <input
+                  type="radio"
+                  name="tipoDocumento"
+                  value="remision"
+                  x-model="tipoDocumento"
+                  class="mt-1 accent-emerald-600"
+                />
+                <div>
+                  <span class="block text-sm font-bold text-slate-900">Nota de Remisión / Recibo de Pago</span>
+                  <span class="block text-xs text-slate-500 mt-0.5">Comprobante de entrega, anticipo o liquidación.</span>
+                </div>
+              </label>
+            </div>
+          </fieldset>
+
+          <!-- Folio, Fecha y Vigencia -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label for="input-folio" class="block text-xs font-semibold text-slate-600 mb-1">Folio Automático</label>
+              <div class="flex">
+                <input
+                  id="input-folio"
+                  name="folio"
+                  type="text"
+                  x-model="folio"
+                  autocorrect="off"
+                  autocapitalize="characters"
+                  spellcheck="false"
+                  class="w-full font-mono text-sm bg-slate-50 border border-slate-300 rounded-l-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+                />
+                <button
+                  type="button"
+                  @click="generarNuevoFolio()"
+                  class="bg-slate-100 hover:bg-slate-200 text-slate-700 border border-l-0 border-slate-300 px-3 rounded-r-lg transition"
+                  aria-label="Generar nuevo número de folio"
+                  title="Generar nuevo folio consecutivo"
+                >
+                  <i class="fa-solid fa-arrows-rotate text-xs" aria-hidden="true"></i>
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label for="input-fecha" class="block text-xs font-semibold text-slate-600 mb-1">Fecha de Emisión</label>
+              <input
+                id="input-fecha"
+                name="fecha"
+                type="date"
+                x-model="fecha"
+                class="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+
+            <div x-show="tipoDocumento === 'cotizacion'">
+              <label for="input-vigencia" class="block text-xs font-semibold text-slate-600 mb-1">Vigencia (Días)</label>
+              <select
+                id="input-vigencia"
+                name="vigenciaDias"
+                x-model.number="vigenciaDias"
+                class="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="7">7 días naturales</option>
+                <option value="10">10 días naturales</option>
+                <option value="15">15 días naturales</option>
+                <option value="30">30 días naturales</option>
+              </select>
+            </div>
+
+            <div x-show="tipoDocumento === 'remision'" x-cloak>
+              <label for="input-metodo-pago" class="block text-xs font-semibold text-slate-600 mb-1">Método de Pago</label>
+              <select
+                id="input-metodo-pago"
+                name="metodoPago"
+                x-model="metodoPago"
+                class="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              >
+                <option value="Transferencia SPEI / Efectivo">Transferencia SPEI / Efectivo</option>
+                <option value="Transferencia Bancaria SPEI">Transferencia Bancaria SPEI</option>
+                <option value="Efectivo en Sucursal / Obra">Efectivo en Sucursal / Obra</option>
+                <option value="Tarjeta Débito / Crédito">Tarjeta Débito / Crédito</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. DATOS DEL CLIENTE -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2 mb-3.5">
+            <span class="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-extrabold">2</span>
+            Datos del Cliente y Ubicación
+          </h2>
+
+          <div class="space-y-3.5">
+            <div>
+              <label for="cliente-nombre" class="block text-xs font-semibold text-slate-700 mb-1">
+                Nombre del Cliente o Empresa <span class="text-rose-500" aria-hidden="true">*</span>
+              </label>
+              <div class="relative">
+                <i class="fa-solid fa-user-tie text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" aria-hidden="true"></i>
+                <input
+                  id="cliente-nombre"
+                  name="clienteNombre"
+                  type="text"
+                  autocomplete="name"
+                  required
+                  placeholder="Ej. Constructora Grijalva S.A. / Ing. Carlos Pérez"
+                  x-model="cliente.nombre"
+                  class="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label for="cliente-whatsapp" class="block text-xs font-semibold text-slate-700 mb-1">
+                  Teléfono de WhatsApp (10 dígitos)
+                </label>
+                <div class="relative">
+                  <i class="fa-brands fa-whatsapp text-emerald-600 absolute left-3.5 top-1/2 -translate-y-1/2 text-base" aria-hidden="true"></i>
+                  <input
+                    id="cliente-whatsapp"
+                    name="clienteTelefono"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="tel"
+                    placeholder="Ej. 9931254090"
+                    x-model="cliente.telefono"
+                    class="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label for="cliente-atencion" class="block text-xs font-semibold text-slate-700 mb-1">
+                  Referencia / Proyecto / Área
+                </label>
+                <div class="relative">
+                  <i class="fa-solid fa-helmet-safety text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" aria-hidden="true"></i>
+                  <input
+                    id="cliente-atencion"
+                    name="clienteAtencion"
+                    type="text"
+                    placeholder="Ej. Climatización Oficinas"
+                    x-model="cliente.atencion"
+                    class="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div>
+              <label for="cliente-direccion" class="block text-xs font-semibold text-slate-700 mb-1">
+                Dirección / Domicilio u Obra en Villahermosa
+              </label>
+              <div class="relative">
+                <i class="fa-solid fa-map-location-dot text-slate-400 absolute left-3.5 top-3 text-sm" aria-hidden="true"></i>
+                <textarea
+                  id="cliente-direccion"
+                  name="clienteDireccion"
+                  rows="2"
+                  autocomplete="street-address"
+                  placeholder="Colonia, Fraccionamiento, Calle, Número o Referencia..."
+                  x-model="cliente.direccion"
+                  class="w-full text-sm bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                ></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. BUSCADOR RÁPIDO DE CATÁLOGO + CONCEPTO LIBRE MANUAL -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <span class="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-extrabold">3</span>
+              Agregar Conceptos o Servicios
+            </h2>
+            <span class="text-xs text-slate-500" x-text="`${config.catalogo.length} precargados`"></span>
+          </div>
+
+          <!-- BUSCADOR RÁPIDO DE CONCEPTOS PRECARGADOS -->
+          <search class="block mb-5 relative" @click.outside="mostrarResultadosCatalogo = false">
+            <label for="buscar-catalogo" class="block text-xs font-semibold text-slate-700 mb-1.5">
+              <i class="fa-solid fa-bolt text-amber-500 mr-1" aria-hidden="true"></i>
+              Buscador Rápido de Catálogo (Clic para autocompletar al instante)
+            </label>
+            <div class="relative">
+              <i class="fa-solid fa-magnifying-glass text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 text-sm" aria-hidden="true"></i>
+              <input
+                id="buscar-catalogo"
+                name="buscarCatalogo"
+                type="search"
+                autocorrect="off"
+                spellcheck="false"
+                placeholder="Buscar: Mantenimiento Minisplit 1 Ton, Carga de Gas R410A, Instalación..."
+                x-model="busquedaCatalogo"
+                @focus="mostrarResultadosCatalogo = true"
+                @input="mostrarResultadosCatalogo = true"
+                class="w-full text-sm bg-sky-50/50 border border-sky-300 rounded-xl pl-9 pr-24 py-2.5 text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+              <button
+                type="button"
+                @click="mostrarResultadosCatalogo = !mostrarResultadosCatalogo"
+                class="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-sky-700 bg-sky-100 hover:bg-sky-200 px-2.5 py-1 rounded-lg transition"
+              >
+                <span x-text="mostrarResultadosCatalogo ? 'Cerrar' : 'Ver todos'"></span>
+              </button>
+            </div>
+
+            <!-- Lista desplegable de resultados del catálogo -->
+            <div
+              x-cloak
+              x-show="mostrarResultadosCatalogo"
+              x-transition
+              class="mt-1.5 bg-white border border-slate-200 rounded-xl shadow-xl max-h-64 overflow-y-auto divide-y divide-slate-100 z-20"
+            >
+              <template x-for="item in catalogoFiltrado" :key="item.id">
+                <button
+                  type="button"
+                  @click="agregarDesdeCatalogo(item)"
+                  class="w-full text-left px-3.5 py-2.5 hover:bg-sky-50/80 transition flex items-start justify-between gap-3 group"
+                >
+                  <div class="min-w-0">
+                    <div class="flex items-center gap-1.5 mb-0.5">
+                      <span class="text-[10px] font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-slate-100 text-slate-600" x-text="item.categoria"></span>
+                      <span class="text-[10px] text-slate-400 font-mono" x-text="item.id"></span>
+                    </div>
+                    <p class="text-xs font-medium text-slate-800 group-hover:text-sky-900 leading-snug" x-text="item.concepto"></p>
+                  </div>
+                  <div class="text-right shrink-0">
+                    <span class="block text-xs font-mono font-bold text-sky-700" x-text="moneda(item.precio)"></span>
+                    <span class="inline-flex items-center gap-1 text-[10px] text-emerald-600 font-semibold mt-0.5">
+                      <i class="fa-solid fa-plus-circle" aria-hidden="true"></i> Agregar
+                    </span>
+                  </div>
+                </button>
+              </template>
+
+              <div x-show="catalogoFiltrado.length === 0" class="p-4 text-center text-xs text-slate-500">
+                No se encontraron servicios con "<span class="font-semibold" x-text="busquedaCatalogo"></span>". Agrégalo manualmente abajo.
+              </div>
+            </div>
+
+            <!-- Chips de acceso rápido para un solo clic -->
+            <div class="mt-2 flex flex-wrap gap-1.5">
+              <template x-for="quickItem in config.catalogo.slice(0, 4)" :key="quickItem.id">
+                <button
+                  type="button"
+                  @click="agregarDesdeCatalogo(quickItem)"
+                  class="text-[11px] bg-slate-100 hover:bg-sky-100 hover:text-sky-800 text-slate-700 border border-slate-200 hover:border-sky-300 px-2.5 py-1 rounded-full transition flex items-center gap-1"
+                >
+                  <i class="fa-solid fa-plus text-[9px] text-sky-600" aria-hidden="true"></i>
+                  <span x-text="quickItem.concepto.split('(')[0].trim()"></span>
+                </button>
+              </template>
+            </div>
+          </search>
+
+          <!-- FORMULARIO PARA AGREGAR CONCEPTO LIBRE MANUALMENTE -->
+          <form @submit.prevent="agregarConceptoManual()" class="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-3" aria-label="Agregar concepto libre manualmente">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                <i class="fa-solid fa-pen-to-square text-sky-600" aria-hidden="true"></i>
+                Agregar Concepto Libre / Personalizado
+              </span>
+              <span
+                x-show="nuevoConcepto.cantidad > 0 && nuevoConcepto.precio > 0"
+                class="text-xs font-mono font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded"
+                x-text="`Importe: ${moneda((parseFloat(nuevoConcepto.cantidad)||0) * (parseFloat(nuevoConcepto.precio)||0))}`"
+              ></span>
+            </div>
+
+            <div>
+              <label for="manual-concepto" class="block text-xs font-medium text-slate-600 mb-1">Descripción del Servicio, Material o Equipo</label>
+              <input
+                id="manual-concepto"
+                name="manualConcepto"
+                type="text"
+                placeholder="Ej. Suministro e instalación de bomba de condensado..."
+                x-model="nuevoConcepto.concepto"
+                class="w-full text-sm bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+              />
+            </div>
+
+            <div class="grid grid-cols-12 gap-2.5 items-end">
+              <div class="col-span-4 sm:col-span-3">
+                <label for="manual-unidad" class="block text-xs font-medium text-slate-600 mb-1">Unidad</label>
+                <select
+                  id="manual-unidad"
+                  name="manualUnidad"
+                  x-model="nuevoConcepto.unidad"
+                  class="w-full text-sm bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                >
+                  <option value="Servicio">Servicio</option>
+                  <option value="Pieza">Pieza</option>
+                  <option value="Equipo">Equipo</option>
+                  <option value="Carga">Carga</option>
+                  <option value="Metro">Metro</option>
+                  <option value="Lote">Lote</option>
+                  <option value="Juego">Juego</option>
+                </select>
+              </div>
+
+              <div class="col-span-3 sm:col-span-3">
+                <label for="manual-cantidad" class="block text-xs font-medium text-slate-600 mb-1">Cantidad</label>
+                <input
+                  id="manual-cantidad"
+                  name="manualCantidad"
+                  type="number"
+                  step="any"
+                  min="0.1"
+                  x-model.number="nuevoConcepto.cantidad"
+                  class="w-full text-sm font-mono bg-white border border-slate-300 rounded-lg px-2.5 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+
+              <div class="col-span-5 sm:col-span-6">
+                <label for="manual-precio" class="block text-xs font-medium text-slate-600 mb-1">Precio Unitario ($)</label>
+                <input
+                  id="manual-precio"
+                  name="manualPrecio"
+                  type="number"
+                  step="any"
+                  min="0"
+                  placeholder="0.00"
+                  x-model.number="nuevoConcepto.precio"
+                  class="w-full text-sm font-mono bg-white border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                />
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              class="w-full bg-slate-900 hover:bg-sky-700 text-white font-semibold text-xs sm:text-sm py-2.5 px-4 rounded-lg transition flex items-center justify-center gap-2 shadow-sm"
+            >
+              <i class="fa-solid fa-plus" aria-hidden="true"></i>
+              <span>Agregar Concepto a la Lista</span>
+            </button>
+          </form>
+
+          <!-- LISTA EDITABLE DE PARTIDAS AGREGADAS -->
+          <div class="mt-4">
+            <div class="flex items-center justify-between mb-2">
+              <span class="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Partidas Activas (<span x-text="partidas.length"></span>)
+              </span>
+              <span class="text-xs font-mono font-semibold text-slate-700" x-text="`Subtotal: ${moneda(subtotal)}`"></span>
+            </div>
+
+            <div class="space-y-2.5 max-h-80 overflow-y-auto pr-1">
+              <template x-for="(item, index) in partidas" :key="item.id">
+                <div class="bg-slate-50 hover:bg-slate-100/80 border border-slate-200 rounded-xl p-3 transition">
+                  <div class="flex items-start justify-between gap-2 mb-2">
+                    <label :for="`partida-desc-${index}`" class="sr-only">Descripción de partida</label>
+                    <textarea
+                      :id="`partida-desc-${index}`"
+                      rows="2"
+                      x-model="item.concepto"
+                      class="w-full text-xs font-medium bg-white border border-slate-200 rounded-lg p-2 text-slate-800 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                    ></textarea>
+                    <button
+                      type="button"
+                      @click="eliminarPartida(index)"
+                      class="text-slate-400 hover:text-rose-600 p-1.5 rounded-lg hover:bg-rose-50 transition shrink-0"
+                      :aria-label="`Eliminar concepto ${index + 1}`"
+                      title="Eliminar partida"
+                    >
+                      <i class="fa-solid fa-trash-can text-sm" aria-hidden="true"></i>
+                    </button>
+                  </div>
+
+                  <div class="grid grid-cols-12 gap-2 items-center">
+                    <div class="col-span-4">
+                      <label :for="`partida-cant-${index}`" class="block text-[10px] font-semibold text-slate-500 uppercase">Cant. (<span x-text="item.unidad || 'Serv'"></span>)</label>
+                      <input
+                        :id="`partida-cant-${index}`"
+                        type="number"
+                        step="any"
+                        min="0.1"
+                        x-model.number="item.cantidad"
+                        class="w-full text-xs font-mono font-bold bg-white border border-slate-300 rounded-md px-2 py-1 text-slate-900"
+                      />
+                    </div>
+                    <div class="col-span-4">
+                      <label :for="`partida-precio-${index}`" class="block text-[10px] font-semibold text-slate-500 uppercase">P. Unitario ($)</label>
+                      <input
+                        :id="`partida-precio-${index}`"
+                        type="number"
+                        step="any"
+                        min="0"
+                        x-model.number="item.precio"
+                        class="w-full text-xs font-mono font-bold bg-white border border-slate-300 rounded-md px-2 py-1 text-slate-900"
+                      />
+                    </div>
+                    <div class="col-span-4 text-right">
+                      <span class="block text-[10px] font-semibold text-slate-500 uppercase">Importe</span>
+                      <span class="text-xs sm:text-sm font-mono font-extrabold text-slate-900" x-text="moneda((parseFloat(item.cantidad)||0) * (parseFloat(item.precio)||0))"></span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <div x-show="partidas.length === 0" class="border-2 border-dashed border-slate-200 rounded-xl p-6 text-center">
+                <i class="fa-solid fa-clipboard-list text-2xl text-slate-300 mb-1" aria-hidden="true"></i>
+                <p class="text-xs text-slate-500">No hay conceptos en el documento. Selecciona uno del buscador o agrégalo manualmente.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. IMPUESTOS, DESCUENTO Y ANTICIPO / SALDO PENDIENTE -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/90 p-5">
+          <h2 class="text-sm font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2 mb-4">
+            <span class="w-6 h-6 rounded-lg bg-sky-100 text-sky-700 flex items-center justify-center text-xs font-extrabold">4</span>
+            Descuento, IVA y Control de Anticipo
+          </h2>
+
+          <div class="space-y-4">
+            <!-- Switch de IVA (16%) vs Precios Netos -->
+            <div class="flex items-center justify-between bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+              <div>
+                <span class="block text-xs sm:text-sm font-bold text-slate-800" x-text="agregarIva ? 'Agregar IVA (16%) Desglosado' : 'Precios Netos (Sin desglosar IVA)'"></span>
+                <span class="block text-xs text-slate-500" x-text="agregarIva ? 'Se suma el 16% de impuesto al subtotal' : 'El importe mostrado ya es el total neto final'"></span>
+              </div>
+
+              <label for="toggle-iva" class="inline-flex items-center cursor-pointer select-none">
+                <input
+                  id="toggle-iva"
+                  type="checkbox"
+                  x-model="agregarIva"
+                  class="sr-only peer"
+                />
+                <div class="w-12 h-7 bg-slate-300 peer-focus:outline-none peer-focus:ring-2 peer-focus:ring-sky-500 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-6 after:w-5.5 after:w-6 after:transition-all relative peer-checked:bg-sky-600"></div>
+              </label>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <!-- Descuento (%) -->
+              <div>
+                <label for="input-descuento" class="block text-xs font-semibold text-slate-700 mb-1">
+                  Descuento Comercial (%)
+                </label>
+                <div class="relative">
+                  <input
+                    id="input-descuento"
+                    name="descuentoPorcentaje"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    x-model.number="descuentoPorcentaje"
+                    class="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-lg pl-3 pr-9 py-2.5 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                  <span class="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">%</span>
+                </div>
+                <p class="text-[11px] text-emerald-700 font-medium mt-1" x-show="montoDescuento > 0" x-text="`Ahorro aplicado: -${moneda(montoDescuento)}`"></p>
+              </div>
+
+              <!-- Anticipo dejado ($) -->
+              <div>
+                <label for="input-anticipo" class="block text-xs font-semibold text-slate-700 mb-1">
+                  Anticipo Dejado / Abono ($)
+                </label>
+                <div class="relative">
+                  <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
+                  <input
+                    id="input-anticipo"
+                    name="anticipo"
+                    type="number"
+                    min="0"
+                    step="50"
+                    x-model.number="anticipo"
+                    class="w-full text-sm font-mono bg-slate-50 border border-slate-300 rounded-lg pl-8 pr-3 py-2.5 text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                </div>
+                <p class="text-[11px] text-sky-700 font-semibold mt-1" x-text="`Saldo Pendiente: ${moneda(saldoPendiente)}`"></p>
+              </div>
+            </div>
+
+            <!-- Observaciones adicionales -->
+            <div>
+              <label for="input-observaciones" class="block text-xs font-semibold text-slate-700 mb-1">
+                Notas Técnicas u Observaciones del Trabajo
+              </label>
+              <textarea
+                id="input-observaciones"
+                rows="2"
+                x-model="observacionesEspeciales"
+                placeholder="Detalles de garantía, alcance técnico o acuerdos de entrega..."
+                class="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+              ></textarea>
+            </div>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- =====================================================================
+           COLUMNA DERECHA (7/12): VISTA PREVIA DE HOJA MEMBRETADA PROFESIONAL
+           ===================================================================== -->
+      <section
+        aria-label="Vista previa del documento membretado"
+        class="lg:col-span-7"
+        :class="activeMobileTab === 'preview' ? 'block' : 'hidden lg:block'"
+      >
+        <!-- Barra informativa sobre la hoja membretada -->
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3 px-1">
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">
+              <i class="fa-solid fa-eye text-sky-600" aria-hidden="true"></i>
+              Vista Previa en Tiempo Real (Tamaño Carta)
+            </span>
+          </div>
+          <span class="text-xs font-mono text-slate-500 truncate max-w-xs" x-text="nombreArchivoPdf"></span>
+        </div>
+
+        <!-- CONTENEDOR EXTERIOR DE LA HOJA -->
+        <div class="bg-slate-200/70 p-2 sm:p-5 rounded-2xl border border-slate-300/80 shadow-inner overflow-x-auto">
+          <!-- DOCUMENTO IMPRIMIBLE PARA HTML2PDF -->
+          <article
+            id="documento-imprimible"
+            class="bg-white mx-auto rounded-lg shadow-xl border border-slate-200 p-6 sm:p-9 max-w-[820px] min-w-[320px] text-slate-800"
+          >
+            <!-- ENCABEZADO MEMBRETADO CORPORATIVO -->
+            <header class="border-b-4 border-sky-600 pb-5 mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div class="flex items-start gap-3.5">
+                <img
+                  :src="config.empresa.logoUrl"
+                  alt="Logo Corporativo ClimaTech Tabasco"
+                  class="w-16 h-16 rounded-2xl shadow-sm border border-slate-200 shrink-0"
+                />
+                <div>
+                  <h2 class="text-lg sm:text-xl font-extrabold text-slate-900 tracking-tight leading-snug" x-text="config.empresa.nombre"></h2>
+                  <p class="text-xs font-semibold text-sky-700 mt-0.5" x-text="config.empresa.eslogan"></p>
+                  <div class="text-[11px] text-slate-600 mt-1.5 space-y-0.5 leading-relaxed">
+                    <p><strong class="text-slate-800">RFC:</strong> <span class="font-mono" x-text="config.empresa.rfc"></span> · <strong class="text-slate-800">Tel / WhatsApp:</strong> <span x-text="config.empresa.telefono"></span></p>
+                    <p x-text="config.empresa.direccion"></p>
+                  </div>
+                </div>
+              </div>
+
+              <!-- CAJA DE FOLIO Y TIPO DE DOCUMENTO -->
+              <div class="w-full sm:w-auto sm:text-right bg-slate-900 text-white rounded-xl p-3.5 shrink-0 border-l-4 border-sky-400">
+                <span
+                  class="inline-block text-[10px] font-extrabold uppercase tracking-widest px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 mb-1"
+                  x-text="tipoDocumento === 'cotizacion' ? 'COTIZACIÓN FORMAL' : 'NOTA DE REMISIÓN / RECIBO'"
+                ></span>
+                <div class="text-base sm:text-lg font-mono font-extrabold text-white tracking-wide" x-text="folio"></div>
+                <div class="text-[11px] text-slate-300 mt-1 space-y-0.5">
+                  <p>Emisión: <strong class="text-white" x-text="fechaFormateada"></strong></p>
+                  <p x-show="tipoDocumento === 'cotizacion'">
+                    Vigencia: <strong class="text-amber-300" x-text="fechaVigenciaFormateada"></strong>
+                  </p>
+                  <p x-show="tipoDocumento === 'remision'" x-cloak>
+                    Estado: <strong class="text-emerald-300" x-text="saldoPendiente <= 0 ? 'PAGADO / LIQUIDADO' : 'CON SALDO PENDIENTE'"></strong>
+                  </p>
+                </div>
+              </div>
+            </header>
+
+            <!-- SECCIÓN DE DATOS DEL CLIENTE Y PROYECTO -->
+            <section class="grid grid-cols-1 sm:grid-cols-12 gap-3 bg-slate-50 border border-slate-200 rounded-xl p-4 mb-6 text-xs">
+              <div class="sm:col-span-7 space-y-1.5">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-sky-700">Datos del Cliente / Receptor</div>
+                <p class="text-sm font-bold text-slate-900" x-text="cliente.nombre || 'Cliente de Mostrador / A quien corresponda'"></p>
+                <p class="text-slate-600 flex items-start gap-1.5" x-show="cliente.direccion">
+                  <span class="font-semibold text-slate-700 shrink-0">Dirección/Obra:</span>
+                  <span x-text="cliente.direccion"></span>
+                </p>
+              </div>
+
+              <div class="sm:col-span-5 sm:border-l border-slate-200 sm:pl-4 space-y-1.5">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-sky-700">Detalles de Atención</div>
+                <p class="text-slate-700" x-show="cliente.telefono">
+                  <span class="font-semibold text-slate-900">WhatsApp Cliente:</span>
+                  <span class="font-mono" x-text="cliente.telefono"></span>
+                </p>
+                <p class="text-slate-700" x-show="cliente.atencion">
+                  <span class="font-semibold text-slate-900">Referencia:</span>
+                  <span x-text="cliente.atencion"></span>
+                </p>
+                <p class="text-slate-700">
+                  <span class="font-semibold text-slate-900">Modalidad Fiscal:</span>
+                  <span x-text="agregarIva ? 'Más IVA (16% Desglosado)' : 'Precios Netos'"></span>
+                </p>
+              </div>
+            </section>
+
+            <!-- TABLA DE CONCEPTOS / PARTIDAS -->
+            <section class="mb-6">
+              <div class="overflow-hidden rounded-xl border border-slate-200">
+                <table class="w-full text-left border-collapse">
+                  <thead>
+                    <tr class="bg-slate-900 text-white text-[11px] uppercase tracking-wider">
+                      <th class="py-2.5 px-3 font-bold w-10 text-center">#</th>
+                      <th class="py-2.5 px-3 font-bold w-20 text-center">Cant.</th>
+                      <th class="py-2.5 px-3 font-bold">Descripción del Concepto / Servicio</th>
+                      <th class="py-2.5 px-3 font-bold text-right w-28">P. Unitario</th>
+                      <th class="py-2.5 px-3 font-bold text-right w-28">Importe</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-200 text-xs">
+                    <template x-for="(partida, idx) in partidas" :key="partida.id">
+                      <tr class="odd:bg-white even:bg-slate-50/70 align-top">
+                        <td class="py-3 px-3 text-center font-mono text-slate-500 font-semibold" x-text="idx + 1"></td>
+                        <td class="py-3 px-3 text-center">
+                          <span class="font-mono font-bold text-slate-900 block" x-text="partida.cantidad"></span>
+                          <span class="text-[10px] text-slate-500 uppercase" x-text="partida.unidad || 'Serv'"></span>
+                        </td>
+                        <td class="py-3 px-3 text-slate-800 font-medium leading-relaxed" x-text="partida.concepto"></td>
+                        <td class="py-3 px-3 text-right font-mono text-slate-700 whitespace-nowrap" x-text="moneda(partida.precio)"></td>
+                        <td class="py-3 px-3 text-right font-mono font-bold text-slate-900 whitespace-nowrap" x-text="moneda((parseFloat(partida.cantidad)||0) * (parseFloat(partida.precio)||0))"></td>
+                      </tr>
+                    </template>
+
+                    <tr x-show="partidas.length === 0">
+                      <td colspan="5" class="py-8 text-center text-slate-400 italic">
+                        Agrega conceptos en el panel izquierdo para visualizar el desglose aquí.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            <!-- SECCIÓN INFERIOR: DATOS BANCARIOS + DESGLOSE DE TOTALES -->
+            <section class="grid grid-cols-1 sm:grid-cols-12 gap-5 items-start mb-6">
+              <!-- Columna izquierda del pie: Datos bancarios y Observaciones -->
+              <div class="sm:col-span-7 space-y-3">
+                <!-- Recuadro de Datos Bancarios -->
+                <div class="bg-sky-50/70 border border-sky-200 rounded-xl p-3.5 text-xs">
+                  <div class="flex items-center gap-2 font-bold text-sky-900 uppercase tracking-wider text-[11px] mb-2">
+                    <i class="fa-solid fa-building-columns text-sky-600" aria-hidden="true"></i>
+                    <span>Datos Bancarios para Depósito o Transferencia SPEI</span>
+                  </div>
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700">
+                    <p><strong class="text-slate-900">Banco:</strong> <span x-text="config.empresa.datosBancarios.banco"></span></p>
+                    <p><strong class="text-slate-900">Cuenta:</strong> <span class="font-mono font-semibold" x-text="config.empresa.datosBancarios.cuenta"></span></p>
+                    <p class="sm:col-span-2"><strong class="text-slate-900">CLABE Interbancaria:</strong> <span class="font-mono font-bold text-sky-900 bg-white px-1.5 py-0.5 rounded border border-sky-200" x-text="config.empresa.datosBancarios.clabe"></span></p>
+                    <p class="sm:col-span-2"><strong class="text-slate-900">Titular:</strong> <span x-text="config.empresa.datosBancarios.titular"></span></p>
+                  </div>
+                </div>
+
+                <!-- Observaciones Técnicas -->
+                <div x-show="observacionesEspeciales" class="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-700 leading-relaxed">
+                  <strong class="text-slate-900 uppercase tracking-wider block mb-0.5 text-[10px]">Observaciones / Alcance del Servicio:</strong>
+                  <p x-text="observacionesEspeciales"></p>
+                </div>
+              </div>
+
+              <!-- Columna derecha del pie: Tabla de Totales, Anticipo y Saldo Pendiente -->
+              <div class="sm:col-span-5 bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2 text-xs">
+                <div class="flex justify-between text-slate-600">
+                  <span>Subtotal:</span>
+                  <span class="font-mono font-semibold text-slate-900" x-text="moneda(subtotal)"></span>
+                </div>
+
+                <div class="flex justify-between text-emerald-700" x-show="montoDescuento > 0">
+                  <span>Descuento (<span x-text="descuentoPorcentaje"></span>%):</span>
+                  <span class="font-mono font-semibold" x-text="`-${moneda(montoDescuento)}`"></span>
+                </div>
+
+                <div class="flex justify-between text-slate-600" x-show="agregarIva">
+                  <span>IVA (16%):</span>
+                  <span class="font-mono font-semibold text-slate-900" x-text="moneda(montoIva)"></span>
+                </div>
+
+                <div class="flex justify-between text-slate-500 text-[11px]" x-show="!agregarIva">
+                  <span>Impuestos:</span>
+                  <span class="font-medium">Precios Netos</span>
+                </div>
+
+                <div class="border-t border-slate-300 pt-2.5 flex justify-between items-baseline">
+                  <span class="text-sm font-extrabold text-slate-900 uppercase">Total General:</span>
+                  <span class="text-base sm:text-lg font-mono font-extrabold text-sky-700" x-text="`${moneda(granTotal)} MXN`"></span>
+                </div>
+
+                <!-- Desglose de Anticipo y Saldo Pendiente -->
+                <div class="border-t border-dashed border-slate-300 pt-2.5 mt-2 space-y-1.5">
+                  <div class="flex justify-between text-slate-700">
+                    <span>Anticipo / Abono recibido:</span>
+                    <span class="font-mono font-semibold text-emerald-700" x-text="anticipoValido > 0 ? `-${moneda(anticipoValido)}` : '$0.00'"></span>
+                  </div>
+
+                  <div class="flex justify-between items-center bg-slate-900 text-white px-3 py-2 rounded-lg">
+                    <span class="text-[11px] font-bold uppercase tracking-wider">Saldo Pendiente:</span>
+                    <span class="font-mono font-extrabold text-sm text-amber-300" x-text="`${moneda(saldoPendiente)} MXN`"></span>
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <!-- CONDICIONES DE GARANTÍA Y FIRMA / SELLO DIGITAL -->
+            <footer class="border-t border-slate-200 pt-4 grid grid-cols-1 sm:grid-cols-12 gap-4 items-center">
+              <!-- Póliza de Garantía -->
+              <div class="sm:col-span-7 text-[10px] text-slate-600 space-y-1 leading-snug">
+                <div class="font-bold text-slate-800 uppercase tracking-wider text-[10px] mb-1">
+                  Póliza de Garantía y Condiciones Comerciales
+                </div>
+                <ul class="list-disc pl-4 space-y-0.5">
+                  <template x-for="(condicion, cIdx) in config.condicionesGarantia" :key="cIdx">
+                    <li x-text="condicion"></li>
+                  </template>
+                </ul>
+                <p class="italic text-slate-500 pt-1" x-text="tipoDocumento === 'cotizacion' ? config.notasPieCotizacion : config.notasPieRemision"></p>
+              </div>
+
+              <!-- Sello Digital de Garantía y Firma de Autorización -->
+              <div class="sm:col-span-5 flex flex-col items-center justify-center text-center">
+                <div class="sello-garantia rounded-xl px-4 py-2.5 w-full max-w-[250px] shadow-sm">
+                  <div class="flex items-center justify-center gap-1.5 text-sky-700 font-extrabold text-[10px] uppercase tracking-widest">
+                    <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+                    <span>Sello Digital de Garantía</span>
+                  </div>
+                  <p class="font-serif italic text-sm font-bold text-slate-800 mt-1" x-text="config.empresa.responsable"></p>
+                  <p class="text-[10px] text-slate-600 font-medium" x-text="config.empresa.cargoResponsable"></p>
+                  <div class="border-t border-sky-300/80 mt-1.5 pt-1 text-[9px] font-mono text-sky-800">
+                    CLIMATECH-VSA · GARANTÍA CERTIFICADA
+                  </div>
+                </div>
+              </div>
+            </footer>
+          </article>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- =====================================================================
+       BARRA FIJA INFERIOR CON LOS DOS BOTONES DE ACCIÓN PRINCIPALES
+       ===================================================================== -->
+  <div class="fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200 shadow-[0_-8px_30px_rgb(0,0,0,0.08)] px-4 py-3">
+    <div class="max-w-[1440px] mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
+      <!-- Resumen rápido en la barra inferior -->
+      <div class="hidden md:flex items-center gap-5 text-xs">
+        <div>
+          <span class="text-slate-500 block">Total Documento</span>
+          <strong class="text-base font-mono font-extrabold text-slate-900" x-text="`${moneda(granTotal)} MXN`"></strong>
+        </div>
+        <div class="h-8 w-px bg-slate-200"></div>
+        <div>
+          <span class="text-slate-500 block">Anticipo</span>
+          <strong class="text-sm font-mono font-bold text-emerald-700" x-text="moneda(anticipoValido)"></strong>
+        </div>
+        <div class="h-8 w-px bg-slate-200"></div>
+        <div>
+          <span class="text-slate-500 block">Saldo Pendiente por Pagar</span>
+          <strong class="text-base font-mono font-extrabold text-sky-700" x-text="`${moneda(saldoPendiente)} MXN`"></strong>
+        </div>
+      </div>
+
+      <!-- DOS BOTONES PRINCIPALES SOLICITADOS -->
+      <div class="w-full md:w-auto grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:flex sm:items-center">
+        <!-- Botón 1: Descargar PDF Oficial -->
+        <button
+          type="button"
+          @click="descargarPDF()"
+          :disabled="generandoPdf"
+          class="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 disabled:bg-sky-400 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+        >
+          <span x-show="!generandoPdf">📥 Descargar PDF Oficial</span>
+          <span x-cloak x-show="generandoPdf" class="flex items-center gap-2">
+            <i class="fa-solid fa-circle-notch fa-spin" aria-hidden="true"></i>
+            Generando PDF HD...
+          </span>
+        </button>
+
+        <!-- Botón 2: Mandar Resumen al WhatsApp del Cliente -->
+        <button
+          type="button"
+          @click="enviarWhatsApp()"
+          class="w-full sm:w-auto bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs sm:text-sm px-5 py-3 rounded-xl shadow-md hover:shadow-lg transition flex items-center justify-center gap-2"
+        >
+          <span>📲 Mandar Resumen al WhatsApp del Cliente</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</body>
+</html>
